@@ -25,8 +25,8 @@ def time_diff(cur,base):
     diff += (float(cur[-3]) - float(base[-3]))*60.0
     diff += (float(cur[-4]) - float(base[-4]))*60.0*60.0
     if (cur[-5] != base[-5]): # not the same day
-        diff += 24.0*60.0*60.0 
-    
+        diff += 24.0*60.0*60.0
+
     return diff
 
 # initialize data
@@ -45,13 +45,13 @@ for run in run_names:
     run_data = {'time':[],'im_center':[],'im_left':[],'im_right':[],'steer':[],'throttle':[],'brake':[],'speed':[]}
     timestamp_base = None # reset timestamp
     show_1_plt = 0        # reset plot function
-    
+
     print("Importing run: '{}'".format(run))
-    
+
     # read file
     with open(data_dir + '/' + run + '/driving_log.csv') as csvfile:
         reader = csv.reader(csvfile)
-        
+
         for line in reader:
             # get current timestamp
             timestamp = line[0][:-4].split('_')[1:]
@@ -60,7 +60,7 @@ for run in run_names:
                 timestamp_base = timestamp
             else:
                 run_data['time'].append(time_diff(timestamp,timestamp_base))
-            
+
             # import images
             img = imageio.imread(data_dir + '/' + run + '/' + line[0])
             img = img[pixels_cut_from_top:(img.shape[0] - 1 - pixels_cut_from_bot),:,:]
@@ -79,20 +79,20 @@ for run in run_names:
             run_data['throttle'].append(float(line[4]))
             run_data['brake'].append(float(line[5]))
             run_data['speed'].append(float(line[6]))
-        
+
             if show_1_plt == 0:
                 fig,ar = plt.subplots(1,2,figsize=(10,10))
                 ar[0].set_title('original image')
                 ar[0].imshow(imageio.imread(data_dir + '/' + run + '/' + line[0]))
-                ar[1].set_title('stored image')            
+                ar[1].set_title('stored image')
                 ar[1].imshow(run_data['im_center'][0])
                 plt.show()
                 show_1_plt = 1
-        
+
         # append run to overall data
         print("Length of run ('{}') is {}.".format(run,len(run_data['speed'])))
         input_data.append(run_data)
-    
+
 # save input data
 with open('input.p', 'wb') as f:
     pickle.dump(input_data, f)
@@ -113,7 +113,7 @@ from scipy import signal
 with open('input.p','rb') as f:
     input_data = pickle.load(f)
 print('Input data restored!')
-    
+
 # generate filter for measurements
 fs = 15.0
 ff = 0.5
@@ -149,16 +149,16 @@ for run in input_data:
     # right
     training_data['img']      += run['im_right'][discard_first_el:-discard_last_el]
     data = signal.filtfilt(filt_steer_b,filt_steer_a,run['steer']) - 0.3
-    training_data['steer']    += data.tolist()[discard_first_el:-discard_last_el] 
+    training_data['steer']    += data.tolist()[discard_first_el:-discard_last_el]
     data = signal.filtfilt(filt_steer_b,filt_steer_a,run['throttle'])
     training_data['throttle'] += data.tolist()[discard_first_el:-discard_last_el]
     data = signal.filtfilt(filt_steer_b,filt_steer_a,run['brake'])
     training_data['brake']    += data.tolist()[discard_first_el:-discard_last_el]
     data = signal.filtfilt(filt_steer_b,filt_steer_a,run['speed'])
     training_data['speed']    += data.tolist()[discard_first_el:-discard_last_el]
-    
-    
-    
+
+
+
 training_data['img']      = np.array(training_data['img'])
 training_data['steer']    = np.array(training_data['steer'])
 training_data['throttle'] = np.array(training_data['throttle'])
@@ -167,7 +167,7 @@ training_data['speed']    = np.array(training_data['speed'])
 
 plt.plot(training_data['steer'])
 plt.show()
-    
+
 print('Data for training generated!')
 print()
 
@@ -217,7 +217,7 @@ ncols = 128
 # model start here
 model = Sequential()
 
-model.add(BatchNormalization(input_shape=(nrows,ncols,3))) 
+model.add(BatchNormalization(epsilon=0.001, axis=3,input_shape=(nrows,ncols,3)))
 
 model.add(Convolution2D(24,(5,5),padding='valid', activation='relu', strides=(2,2)))
 model.add(Convolution2D(36,(5,5),padding='valid', activation='relu', strides=(2,2)))
@@ -236,7 +236,7 @@ model.summary()
 # Save model to JSON
 with open('autopilot_basic_model.json', 'w') as outfile:
     outfile.write(json.dumps(json.loads(model.to_json()), indent=2))
-    
+
 print("Driver Model stored!")
 
 ########################################
@@ -272,9 +272,9 @@ with open('autopilot_basic_model.json') as model_file:
 
 
 # checkpoint
-filepath="weights/weights.best.hdf5"
-checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
-callbacks_list = [checkpoint]
+#filepath="weights/weights.best.hdf5"
+#checkpoint = ModelCheckpoint(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+#callbacks_list = [checkpoint]
 
 
 adam = Adam(lr=0.0001)
@@ -282,13 +282,13 @@ model.compile(loss='mse',
               optimizer=adam,
               metrics=['mse','accuracy'])
 
-nb_epoch = 5
+nb_epoch = 10
 batch_size = 64
 
 print(training_data['steer'][:].shape)
 print(training_data['img'].shape)
 
-model.fit(training_data['img'], training_data['steer'], callbacks=callbacks_list,
+model.fit(training_data['img'], training_data['steer'], #callbacks=callbacks_list,
           batch_size =batch_size, nb_epoch=nb_epoch, verbose=1,
           validation_split=0.25,shuffle=True)
 
